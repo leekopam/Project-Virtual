@@ -48,7 +48,8 @@ public class iFacialMocapAnimator : MonoBehaviour
     public Transform rightEyeBone;
 
     // 내부 변수
-    private Dictionary<string, float> currentBlendShapes = new Dictionary<string, float>();
+    private readonly Dictionary<string, float> currentBlendShapes = new Dictionary<string, float>();
+    private readonly Dictionary<string, int> blendShapeIndices = new Dictionary<string, int>();
     private Vector3 currentHeadEuler = Vector3.zero;
 
     private Quaternion initialHeadRotation;
@@ -61,6 +62,7 @@ public class iFacialMocapAnimator : MonoBehaviour
         // 연결 대상이 비어있으면 자동으로 찾기 수행
         if (faceMeshRenderer == null) AutoFindFaceMesh();
         if (headBone == null) AutoFindHeadBone();
+        CacheBlendShapeIndices();
 
         // 초기 회전값 저장 (보정 기준)
         if (headBone) initialHeadRotation = headBone.localRotation;
@@ -200,8 +202,7 @@ public class iFacialMocapAnimator : MonoBehaviour
         {
             foreach (var kvp in currentBlendShapes)
             {
-                int index = faceMeshRenderer.sharedMesh.GetBlendShapeIndex(kvp.Key);
-                if (index != -1)
+                if (blendShapeIndices.TryGetValue(kvp.Key, out int index))
                 {
                     faceMeshRenderer.SetBlendShapeWeight(index, kvp.Value);
                 }
@@ -246,8 +247,7 @@ public class iFacialMocapAnimator : MonoBehaviour
         {
             foreach (var kvp in currentBlendShapes)
             {
-                int index = faceMeshRenderer.sharedMesh.GetBlendShapeIndex(kvp.Key);
-                if (index != -1)
+                if (blendShapeIndices.TryGetValue(kvp.Key, out int index))
                 {
                     float currentWeight = faceMeshRenderer.GetBlendShapeWeight(index);
                     faceMeshRenderer.SetBlendShapeWeight(index, Mathf.Lerp(currentWeight, 0f, blend));
@@ -264,6 +264,42 @@ public class iFacialMocapAnimator : MonoBehaviour
     #endregion
 
     #region 헬퍼 메서드
+    private void CacheBlendShapeIndices()
+    {
+        blendShapeIndices.Clear();
+        if (faceMeshRenderer == null || faceMeshRenderer.sharedMesh == null) return;
+
+        Mesh mesh = faceMeshRenderer.sharedMesh;
+        for (int index = 0; index < mesh.blendShapeCount; index++)
+        {
+            AddBlendShapeIndex(mesh.GetBlendShapeName(index), index);
+        }
+
+        for (int index = 0; index < mesh.blendShapeCount; index++)
+        {
+            string fullName = mesh.GetBlendShapeName(index);
+            int separatorIndex = fullName.IndexOf('.');
+            if (separatorIndex <= 0 ||
+                !int.TryParse(fullName.Substring(0, separatorIndex), out _)) continue;
+
+            string normalizedName = fullName.Substring(separatorIndex + 1);
+            AddBlendShapeIndex(normalizedName, index);
+
+            if (normalizedName.Length > 1 && normalizedName[0] == 'x')
+            {
+                AddBlendShapeIndex(normalizedName.Substring(1), index);
+            }
+        }
+    }
+
+    private void AddBlendShapeIndex(string name, int index)
+    {
+        if (!blendShapeIndices.ContainsKey(name))
+        {
+            blendShapeIndices.Add(name, index);
+        }
+    }
+
     // 초기 회전값 유효성 체크
     private Quaternion checkInitialRotation()
     {
