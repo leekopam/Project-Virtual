@@ -1,10 +1,9 @@
-# 로컬 전용 모델 자산
-/Assets/Model/Tomarudo/
-/Assets/Model/*.vrm*
-/Assets/Model/**/*.fbx*
-/Assets/Model/**/*.blend*
-/Assets/Model/**/*.pmx*
-/Assets/Model/**/*.pmd*
+# 로컬 전용 모델 원본 및 변환 결과
+/Assets/Model/
+
+# MMD4Mecanim이 모델 변환 중 생성한 로컬 머티리얼
+/Assets/Materials/
+/Assets/Materials.meta
 
 # 원본 이용 규약을 저장소에서 증명할 수 없는 YYB 미쿠 원본 및 변환 결과
 /Assets/YYB Hatsune Miku_default_1.0ver*
