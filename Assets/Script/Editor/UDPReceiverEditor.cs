@@ -52,14 +52,17 @@ public class UDPReceiverEditor : Editor
         DrawValue("송신 IP", receiver.SenderIPAddress);
         DrawValue("잠긴 송신 IP", receiver.LockedSenderIPAddress);
         DrawValue("최근 수신 시각", receiver.LastReceivedAt);
+        DrawValue(
+            "마지막 패킷 이후",
+            float.IsPositiveInfinity(receiver.SecondsSinceLastPacket)
+                ? "수신 기록 없음"
+                : $"{receiver.SecondsSinceLastPacket:0.000}초");
         DrawValue("초당 패킷 수", $"{receiver.PacketsPerSecond:0.0} PPS");
         DrawValue("누적 수신", receiver.TotalReceivedPackets.ToString());
         DrawValue("누적 적용", receiver.TotalAppliedPackets.ToString());
         DrawValue("누적 무시", receiver.TotalIgnoredPackets.ToString());
         DrawValue("잘못된 패킷", receiver.TotalInvalidPackets.ToString());
         DrawValue("최신 프레임 대체", receiver.TotalSupersededPackets.ToString());
-        DrawValue("지연 추정", receiver.EstimatedLatency);
-
         if (receiver.SenderWarning != "없음")
             EditorGUILayout.HelpBox(receiver.SenderWarning, MessageType.Warning);
 

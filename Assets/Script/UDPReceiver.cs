@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -19,6 +18,7 @@ public class UDPReceiver : MonoBehaviour
 {
     private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
     private readonly object packetLock = new object();
+    private readonly LatestMocapPacketBuffer latestPacketBuffer = new LatestMocapPacketBuffer();
 
     public static UDPReceiver Instance { get; private set; }
     public static string LatestData { get; private set; } = "";
@@ -49,7 +49,12 @@ public class UDPReceiver : MonoBehaviour
     public string StatusDetail => statusDetail;
     public bool IsRunning => isRunning;
     public bool IsReceivingPackets => receiveState == UdpReceiveState.Receiving;
-    public string LastReceivedAt => lastReceivedAt;
+    public string LastReceivedAt => lastReceivedUtc.HasValue
+        ? lastReceivedUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")
+        : "수신 기록 없음";
+    public float SecondsSinceLastPacket => float.IsNegativeInfinity(lastReceivedRealtime)
+        ? float.PositiveInfinity
+        : Mathf.Max(0f, Time.realtimeSinceStartup - lastReceivedRealtime);
     public string SenderIPAddress => lastSenderIPAddress;
     public string LockedSenderIPAddress => lockedSenderIPAddress;
     public string SenderWarning => senderWarning;
@@ -66,7 +71,7 @@ public class UDPReceiver : MonoBehaviour
 
     private UdpReceiveState receiveState = UdpReceiveState.Stopped;
     private string statusDetail = "수신이 중지되어 있습니다.";
-    private string lastReceivedAt = "수신 기록 없음";
+    private DateTime? lastReceivedUtc;
     private string lastSenderIPAddress = "수신 기록 없음";
     private string lockedSenderIPAddress = "잠금되지 않음";
     private string senderWarning = "없음";
@@ -80,11 +85,6 @@ public class UDPReceiver : MonoBehaviour
     private float lastPpsSampleRealtime;
     private long lastPpsPacketCount;
 
-    private string pendingPacket;
-    private string pendingSenderIPAddress;
-    private string pendingLockedSenderIPAddress;
-    private DateTime pendingReceivedUtc;
-    private bool hasPendingPacket;
     private string lockedSenderOnReceiveThread = "";
     private string pendingSenderWarning;
     private string pendingReceiveError;
@@ -117,13 +117,13 @@ public class UDPReceiver : MonoBehaviour
         UpdatePacketsPerSecond();
         ConsumeSenderWarning();
 
-        if (TryTakeLatestPacket(
-                out string packet,
-                out string senderIP,
-                out string lockedSenderIP,
-                out DateTime receivedUtc))
+        if (latestPacketBuffer.TryTake(out UdpMocapPacketFrame frame))
         {
-            ApplyLatestPacket(packet, senderIP, lockedSenderIP, receivedUtc);
+            ApplyLatestPacket(
+                frame.Data,
+                frame.SenderIPAddress,
+                frame.LockedSenderIPAddress,
+                frame.ReceivedUtc);
         }
 
         if (TryTakeReceiveError(out string receiveError))
@@ -133,13 +133,8 @@ public class UDPReceiver : MonoBehaviour
         }
 
         if (receiveState == UdpReceiveState.Receiving &&
-            Time.realtimeSinceStartup - lastReceivedRealtime > Mathf.Max(0.1f, signalTimeout))
-        {
-            SetState(
-                UdpReceiveState.SignalLost,
-                $"{signalTimeout:0.##}초 동안 정상 패킷이 없습니다.");
-            Debug.LogWarning($"[UDP] {signalTimeout:0.##}초 동안 패킷이 없어 신호가 끊겼습니다.");
-        }
+            SecondsSinceLastPacket > Mathf.Max(0.1f, signalTimeout))
+            HandleSignalTimeout();
     }
 
     private void OnApplicationQuit()
@@ -207,10 +202,7 @@ public class UDPReceiver : MonoBehaviour
 
         lock (packetLock)
         {
-            hasPendingPacket = false;
-            pendingPacket = null;
-            pendingSenderIPAddress = null;
-            pendingLockedSenderIPAddress = null;
+            latestPacketBuffer.Clear();
             pendingReceiveError = null;
         }
 
@@ -259,7 +251,7 @@ public class UDPReceiver : MonoBehaviour
                     continue;
                 }
 
-                if (!IsValidMocapPacket(text))
+                if (!FacialMocapPacketValidator.IsValid(text))
                 {
                     Interlocked.Increment(ref totalInvalidPacketCounter);
                     continue;
@@ -321,68 +313,43 @@ public class UDPReceiver : MonoBehaviour
                 }
             }
 
-            if (hasPendingPacket)
+            var frame = new UdpMocapPacketFrame(
+                text,
+                senderIP,
+                lockFirstSender ? lockedSenderOnReceiveThread : "잠금 사용 안 함",
+                receivedUtc);
+            if (latestPacketBuffer.Store(frame))
                 Interlocked.Increment(ref totalSupersededPacketCounter);
-
-            pendingPacket = text;
-            pendingSenderIPAddress = senderIP;
-            pendingLockedSenderIPAddress = lockFirstSender
-                ? lockedSenderOnReceiveThread
-                : "잠금 사용 안 함";
-            pendingReceivedUtc = receivedUtc;
-            hasPendingPacket = true;
             return true;
         }
     }
     #endregion
 
     #region 메인 스레드 적용
-    private bool TryTakeLatestPacket(
-        out string packet,
-        out string senderIP,
-        out string lockedSenderIP,
-        out DateTime receivedUtc)
-    {
-        lock (packetLock)
-        {
-            if (!hasPendingPacket)
-            {
-                packet = null;
-                senderIP = null;
-                lockedSenderIP = null;
-                receivedUtc = default;
-                return false;
-            }
-
-            packet = pendingPacket;
-            senderIP = pendingSenderIPAddress;
-            lockedSenderIP = pendingLockedSenderIPAddress;
-            receivedUtc = pendingReceivedUtc;
-            hasPendingPacket = false;
-            return true;
-        }
-    }
-
     private void ApplyLatestPacket(
         string packet,
         string senderIP,
         string lockedSenderIP,
         DateTime receivedUtc)
     {
-        UdpReceiveState previousState = receiveState;
+        bool wasReceiving = receiveState == UdpReceiveState.Receiving;
+        bool statusChanged = !wasReceiving ||
+                             !string.Equals(lastSenderIPAddress, senderIP, StringComparison.Ordinal);
         double packetAgeSeconds = Math.Max(0d, (DateTime.UtcNow - receivedUtc).TotalSeconds);
 
         LatestData = packet;
-        receivedLog = packet.Replace("|", "\n");
+        receivedLog = packet;
         lastReceivedRealtime = Time.realtimeSinceStartup - (float)packetAgeSeconds;
-        lastReceivedAt = receivedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff");
+        lastReceivedUtc = receivedUtc;
         lastSenderIPAddress = senderIP;
         lockedSenderIPAddress = lockedSenderIP;
         senderWarning = "없음";
         Interlocked.Increment(ref totalAppliedPacketCounter);
 
-        SetState(UdpReceiveState.Receiving, $"{senderIP}의 최신 패킷을 적용 중입니다.");
-        if (previousState != UdpReceiveState.Receiving)
+        if (statusChanged)
+            SetState(UdpReceiveState.Receiving, $"{senderIP}의 최신 패킷을 적용 중입니다.");
+
+        if (!wasReceiving)
             Debug.Log($"[UDP] {senderIP}로부터 정상 패킷 수신을 시작했습니다.");
 
         OnDataReceived?.Invoke(packet);
@@ -422,6 +389,14 @@ public class UDPReceiver : MonoBehaviour
         ReleaseTransport();
         SetPortError(error);
     }
+
+    private void HandleSignalTimeout()
+    {
+        SetState(
+            UdpReceiveState.SignalLost,
+            $"{signalTimeout:0.##}초 동안 정상 패킷이 없습니다.");
+        Debug.LogWarning($"[UDP] {signalTimeout:0.##}초 동안 패킷이 없어 신호가 끊겼습니다.");
+    }
     #endregion
 
     #region 상태 및 검증
@@ -443,14 +418,14 @@ public class UDPReceiver : MonoBehaviour
     {
         lock (packetLock)
         {
-            hasPendingPacket = false;
+            latestPacketBuffer.Clear();
             lockedSenderOnReceiveThread = "";
             pendingSenderWarning = null;
             pendingReceiveError = null;
         }
 
         lastReceivedRealtime = float.NegativeInfinity;
-        lastReceivedAt = "수신 기록 없음";
+        lastReceivedUtc = null;
         lastSenderIPAddress = "수신 기록 없음";
         lockedSenderIPAddress = lockFirstSender ? "정상 패킷 대기 중" : "잠금 사용 안 함";
         senderWarning = "없음";
@@ -476,37 +451,6 @@ public class UDPReceiver : MonoBehaviour
         }
 
         resolvedIPAddress = "";
-        return false;
-    }
-
-    private static bool IsValidMocapPacket(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text) || !text.Contains("|"))
-            return false;
-
-        string[] values = text.Split('|');
-        foreach (string value in values)
-        {
-            if (string.IsNullOrWhiteSpace(value)) continue;
-
-            int headIndex = value.IndexOf("head#", StringComparison.Ordinal);
-            if (headIndex >= 0 && headIndex + 5 < value.Length)
-                return true;
-
-            int separatorIndex = value.LastIndexOf('-');
-            if (separatorIndex <= 0 || separatorIndex >= value.Length - 1)
-                continue;
-
-            if (float.TryParse(
-                    value.Substring(separatorIndex + 1),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out _))
-            {
-                return true;
-            }
-        }
-
         return false;
     }
 

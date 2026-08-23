@@ -7,7 +7,6 @@ using System.Linq;
 public class iFacialMocapAnimator : MonoBehaviour
 {
     private const float NeutralReturnSpeed = 5f;
-    private const string CalibrationStoragePrefix = "ProjectVirtual.iFacialMocap.Calibration.";
 
     #region 변수 선언
     [Header("설정 조정")]
@@ -359,21 +358,15 @@ public class iFacialMocapAnimator : MonoBehaviour
     public void SaveCalibration()
     {
         string profileName = GetCalibrationProfileName();
-        string storageKey = CalibrationStoragePrefix + profileName + ".";
 
         try
         {
-            PlayerPrefs.SetFloat(storageKey + "offset.x", calibrationOffsetEuler.x);
-            PlayerPrefs.SetFloat(storageKey + "offset.y", calibrationOffsetEuler.y);
-            PlayerPrefs.SetFloat(storageKey + "offset.z", calibrationOffsetEuler.z);
-            PlayerPrefs.SetFloat(storageKey + "multiplier.x", rotationMultiplier.x);
-            PlayerPrefs.SetFloat(storageKey + "multiplier.y", rotationMultiplier.y);
-            PlayerPrefs.SetFloat(storageKey + "multiplier.z", rotationMultiplier.z);
-            PlayerPrefs.SetFloat(storageKey + "headSensitivity", headSensitivity);
-            PlayerPrefs.SetFloat(storageKey + "additionalOffset.x", additionalOffset.x);
-            PlayerPrefs.SetFloat(storageKey + "additionalOffset.y", additionalOffset.y);
-            PlayerPrefs.SetFloat(storageKey + "additionalOffset.z", additionalOffset.z);
-            PlayerPrefs.Save();
+            var settings = new FacialMocapCalibrationSettings(
+                calibrationOffsetEuler,
+                rotationMultiplier,
+                headSensitivity,
+                additionalOffset);
+            FacialMocapCalibrationStore.Save(profileName, settings);
 
             calibrationSaveStatus = $"저장 완료: {profileName}";
             lastCalibrationSavedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
@@ -389,36 +382,19 @@ public class iFacialMocapAnimator : MonoBehaviour
     public bool LoadCalibration()
     {
         string profileName = GetCalibrationProfileName();
-        string storageKey = CalibrationStoragePrefix + profileName + ".";
-        string[] requiredKeys =
-        {
-            "offset.x", "offset.y", "offset.z",
-            "multiplier.x", "multiplier.y", "multiplier.z",
-            "headSensitivity",
-            "additionalOffset.x", "additionalOffset.y", "additionalOffset.z"
-        };
-
-        if (requiredKeys.Any(key => !PlayerPrefs.HasKey(storageKey + key)))
-        {
-            calibrationLoadStatus = $"저장값 없음: {profileName}";
-            return false;
-        }
 
         try
         {
-            calibrationOffsetEuler = new Vector3(
-                PlayerPrefs.GetFloat(storageKey + "offset.x"),
-                PlayerPrefs.GetFloat(storageKey + "offset.y"),
-                PlayerPrefs.GetFloat(storageKey + "offset.z"));
-            rotationMultiplier = new Vector3(
-                PlayerPrefs.GetFloat(storageKey + "multiplier.x"),
-                PlayerPrefs.GetFloat(storageKey + "multiplier.y"),
-                PlayerPrefs.GetFloat(storageKey + "multiplier.z"));
-            headSensitivity = PlayerPrefs.GetFloat(storageKey + "headSensitivity");
-            additionalOffset = new Vector3(
-                PlayerPrefs.GetFloat(storageKey + "additionalOffset.x"),
-                PlayerPrefs.GetFloat(storageKey + "additionalOffset.y"),
-                PlayerPrefs.GetFloat(storageKey + "additionalOffset.z"));
+            if (!FacialMocapCalibrationStore.TryLoad(profileName, out FacialMocapCalibrationSettings settings))
+            {
+                calibrationLoadStatus = $"저장값 없음: {profileName}";
+                return false;
+            }
+
+            calibrationOffsetEuler = settings.CalibrationOffsetEuler;
+            rotationMultiplier = settings.RotationMultiplier;
+            headSensitivity = settings.HeadSensitivity;
+            additionalOffset = settings.AdditionalOffset;
 
             calibrationStatus = "저장값 적용 완료";
             calibrationLoadStatus = $"불러오기 완료: {profileName}";
