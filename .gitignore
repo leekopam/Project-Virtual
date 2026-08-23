@@ -1,12 +1,45 @@
 # 로컬 전용 모델 자산
 /Assets/Model/Tomarudo/
 /Assets/Model/*.vrm*
+/Assets/Model/**/*.fbx*
+/Assets/Model/**/*.blend*
+/Assets/Model/**/*.pmx*
+/Assets/Model/**/*.pmd*
 
 # Unity가 로컬에서 생성하는 파일
-/Library/
-/Logs/
-/UserSettings/
-/obj/
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Mm]emoryCaptures/
+/[Uu]ser[Ss]ettings/
+ExportedObj/
 /.vs/
+.consulo/
 *.csproj
+*.unityproj
 *.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.opendb
+*.VC.db
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# IDE별 로컬 설정
+.vscode/extensions.json
+.vscode/launch.json
+.vscode/settings.json
+
+# 운영체제가 생성하는 파일
+.DS_Store
+Thumbs.db
