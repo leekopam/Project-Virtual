@@ -18,9 +18,22 @@ public class UDPReceiver : MonoBehaviour
     [Tooltip("특정 IP 주소만 허용 (비어있으면 모든 IP 허용)")]
     public string targetIPAddress = "";
 
+    [Tooltip("이 시간 동안 패킷이 없으면 신호 끊김으로 처리합니다.")]
+    [Min(0.1f)]
+    public float signalTimeout = 1.0f;
+
     [Header("수신 상태 모니터링")]
     [Tooltip("현재 연결 상태")]
     public bool IsConnected = false;
+
+    [SerializeField, Tooltip("현재 UDP 수신 상태")]
+    private string currentStatus = "대기 중";
+
+    [SerializeField, Tooltip("마지막 정상 패킷 수신 시각")]
+    private string lastReceivedAt = "수신 기록 없음";
+
+    [SerializeField, Tooltip("제한 시간 안에 패킷을 수신했는지 여부")]
+    private bool isReceivingPackets = false;
 
     [Tooltip("수신된 데이터 로그")]
     [TextArea(5, 100)]
@@ -31,11 +44,14 @@ public class UDPReceiver : MonoBehaviour
 
     // 프로퍼티
     public static string LatestData { get; private set; } = "";
+    public bool IsReceivingPackets => isReceivingPackets;
+    public string LastReceivedAt => lastReceivedAt;
 
     // 내부 변수
     private Thread receiveThread;
     private UdpClient client;
-    private bool isRunning = false;
+    private volatile bool isRunning = false;
+    private float lastReceivedRealtime = float.NegativeInfinity;
 
     // 메인 스레드 처리를 위한 헬퍼
     private UnityMainThreadDispatcher mainThreadDispatcher;
@@ -59,10 +75,28 @@ public class UDPReceiver : MonoBehaviour
         StartConnection();
     }
 
+    private void Update()
+    {
+        if (isReceivingPackets &&
+            Time.realtimeSinceStartup - lastReceivedRealtime > Mathf.Max(0.1f, signalTimeout))
+        {
+            IsConnected = false;
+            isReceivingPackets = false;
+            currentStatus = "신호 끊김";
+            Debug.LogWarning($"[UDP] {signalTimeout:0.##}초 동안 패킷이 없어 신호가 끊겼습니다.");
+        }
+    }
+
     // 앱 종료 시 연결 종료
     private void OnApplicationQuit() 
     {
         StopConnection();
+    }
+
+    private void OnDestroy()
+    {
+        StopConnection();
+        if (Instance == this) Instance = null;
     }
 
     #region 연결 제어 기능
@@ -74,21 +108,27 @@ public class UDPReceiver : MonoBehaviour
         try
         {
             client = new UdpClient(port);
+            isRunning = true;
             
             // 스레드 설정 및 시작
             receiveThread = new Thread(new ThreadStart(ReceiveData));
             receiveThread.IsBackground = true;
             receiveThread.Start();
 
-            isRunning = true;
             IsConnected = false;
+            isReceivingPackets = false;
+            currentStatus = "패킷 대기 중";
             receivedLog = "연결 성공! 데이터 수신 대기중...";
             
             Debug.Log($"[UDP] {port}번 포트에서 수신 대기를 시작합니다.");
         }
         catch (Exception e)
         {
+            isRunning = false;
+            client?.Close();
+            client = null;
             Debug.LogError($"[UDP 연결 실패] {port}번 포트를 열 수 없습니다: {e.Message}");
+            currentStatus = "연결 실패";
             receivedLog = $"연결 실패: {e.Message}";
         }
     }
@@ -96,18 +136,21 @@ public class UDPReceiver : MonoBehaviour
     // 연결 종료 메서드
     public void StopConnection()
     {
+        if (!isRunning && client == null && receiveThread == null) return;
+
         isRunning = false;
+        client?.Close();
 
         if (receiveThread != null && receiveThread.IsAlive)
         {
-            receiveThread.Abort();
+            receiveThread.Join(500);
         }
 
-        if (client != null)
-        {
-            client.Close();
-        }
-
+        receiveThread = null;
+        client = null;
+        IsConnected = false;
+        isReceivingPackets = false;
+        currentStatus = "연결 종료";
         Debug.Log("[UDP] 연결을 종료합니다.");
     }
     #endregion
@@ -135,8 +178,12 @@ public class UDPReceiver : MonoBehaviour
                 // 메인 스레드로 작업 이관
                 mainThreadDispatcher.Enqueue(() =>
                 {
-                    HandleReceivedData(text, senderIP);
+                    if (isRunning) HandleReceivedData(text, senderIP);
                 });
+            }
+            catch (ThreadAbortException)
+            {
+                // Unity 도메인 리로드가 백그라운드 스레드를 종료하는 경우
             }
             catch (SocketException e)
             {
@@ -155,6 +202,10 @@ public class UDPReceiver : MonoBehaviour
     {
         LatestData = text;
         receivedLog = text.Replace("|", "\n"); // 인스펙터 모니터링용
+        lastReceivedRealtime = Time.realtimeSinceStartup;
+        lastReceivedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+        currentStatus = "수신 중";
+        isReceivingPackets = true;
 
         // 첫 연결 시 로그 출력
         if (!IsConnected)

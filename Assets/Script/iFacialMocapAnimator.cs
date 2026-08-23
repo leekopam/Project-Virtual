@@ -5,6 +5,8 @@ using System.Linq;
 [DefaultExecutionOrder(500)]
 public class iFacialMocapAnimator : MonoBehaviour
 {
+    private const float NeutralReturnSpeed = 5f;
+
     #region 변수 선언
     [Header("설정 조정")]
     [Tooltip("체크하면 내 왼쪽 눈 감을 때 모델도 왼쪽 눈을 감습니다. (체크 해제 시 거울 모드)")]
@@ -86,8 +88,15 @@ public class iFacialMocapAnimator : MonoBehaviour
 
         if (!isConnected) return;
 
-        ApplyBlendShapes();
-        ApplyHeadRotation();
+        if (UDPReceiver.Instance != null && UDPReceiver.Instance.IsReceivingPackets)
+        {
+            ApplyBlendShapes();
+            ApplyHeadRotation();
+        }
+        else
+        {
+            ReturnToNeutral();
+        }
     }
     #endregion
 
@@ -226,6 +235,30 @@ public class iFacialMocapAnimator : MonoBehaviour
 
             // 최종 회전 적용
             headBone.localRotation = checkInitialRotation() * Quaternion.Euler(finalEuler);
+        }
+    }
+
+    private void ReturnToNeutral()
+    {
+        float blend = 1f - Mathf.Exp(-NeutralReturnSpeed * Time.deltaTime);
+
+        if (faceMeshRenderer != null)
+        {
+            foreach (var kvp in currentBlendShapes)
+            {
+                int index = faceMeshRenderer.sharedMesh.GetBlendShapeIndex(kvp.Key);
+                if (index != -1)
+                {
+                    float currentWeight = faceMeshRenderer.GetBlendShapeWeight(index);
+                    faceMeshRenderer.SetBlendShapeWeight(index, Mathf.Lerp(currentWeight, 0f, blend));
+                }
+            }
+        }
+
+        if (headBone != null)
+        {
+            Quaternion neutralRotation = checkInitialRotation() * Quaternion.Euler(additionalOffset);
+            headBone.localRotation = Quaternion.Slerp(headBone.localRotation, neutralRotation, blend);
         }
     }
     #endregion
