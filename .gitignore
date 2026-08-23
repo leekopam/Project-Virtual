@@ -1,5 +1,6 @@
 # 로컬 전용 모델 원본 및 변환 결과
 /Assets/Model/
+/Assets/Model.meta
 
 # MMD4Mecanim이 모델 변환 중 생성한 로컬 머티리얼
 /Assets/Materials/
