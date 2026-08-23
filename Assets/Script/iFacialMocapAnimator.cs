@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,6 +7,7 @@ using System.Linq;
 public class iFacialMocapAnimator : MonoBehaviour
 {
     private const float NeutralReturnSpeed = 5f;
+    private const string CalibrationStoragePrefix = "ProjectVirtual.iFacialMocap.Calibration.";
 
     #region 변수 선언
     [Header("설정 조정")]
@@ -31,6 +33,9 @@ public class iFacialMocapAnimator : MonoBehaviour
     [Tooltip("현재 적용된 보정값 (자동 설정됨)")]
     public Vector3 calibrationOffsetEuler;
 
+    [Tooltip("저장할 캐릭터 보정 프로필 이름 (비어있으면 GameObject 이름 사용)")]
+    public string calibrationProfileName = "";
+
     [Header("회전 보정 (최종 감도 및 오프셋)")]
     [Tooltip("각 축별 회전 방향 및 세기 (X: Pitch, Y: Yaw, Z: Roll). -1은 반전.")]
     public Vector3 rotationMultiplier = new Vector3(1f, -1f, 1f);
@@ -40,6 +45,10 @@ public class iFacialMocapAnimator : MonoBehaviour
 
     [Tooltip("추가 수동 오프셋 (필요시 사용)")]
     public Vector3 additionalOffset = Vector3.zero;
+
+    [Tooltip("패킷 재수신과 일반 추적 시 적용할 보간 속도")]
+    [Min(0.1f)]
+    public float trackingSmoothingSpeed = 12f;
 
     [Header("연결 대상")]
     public SkinnedMeshRenderer faceMeshRenderer;
@@ -54,6 +63,15 @@ public class iFacialMocapAnimator : MonoBehaviour
 
     private Quaternion initialHeadRotation;
     private bool isConnected = false;
+    private string calibrationStatus = "미보정";
+    private string lastCalibrationAt = "보정 기록 없음";
+    private string calibrationSaveStatus = "저장 기록 없음";
+    private string lastCalibrationSavedAt = "저장 기록 없음";
+
+    public string CalibrationStatus => calibrationStatus;
+    public string LastCalibrationAt => lastCalibrationAt;
+    public string CalibrationSaveStatus => calibrationSaveStatus;
+    public string LastCalibrationSavedAt => lastCalibrationSavedAt;
     #endregion
 
     #region 유니티 라이프사이클
@@ -85,8 +103,7 @@ public class iFacialMocapAnimator : MonoBehaviour
         if (calibrateNow)
         {
             calibrateNow = false;
-            calibrationOffsetEuler = currentHeadEuler;
-            Debug.Log($"[Calibration] 보정 완료. Offset: {calibrationOffsetEuler}");
+            PerformCalibration();
         }
 
         if (!isConnected) return;
@@ -251,11 +268,13 @@ public class iFacialMocapAnimator : MonoBehaviour
     {
         if (faceMeshRenderer != null)
         {
+            float blend = 1f - Mathf.Exp(-Mathf.Max(0.1f, trackingSmoothingSpeed) * Time.deltaTime);
             foreach (var kvp in currentBlendShapes)
             {
                 if (blendShapeIndices.TryGetValue(kvp.Key, out int index))
                 {
-                    faceMeshRenderer.SetBlendShapeWeight(index, kvp.Value);
+                    float currentWeight = faceMeshRenderer.GetBlendShapeWeight(index);
+                    faceMeshRenderer.SetBlendShapeWeight(index, Mathf.Lerp(currentWeight, kvp.Value, blend));
                 }
             }
         }
@@ -286,7 +305,9 @@ public class iFacialMocapAnimator : MonoBehaviour
             finalEuler += additionalOffset;
 
             // 최종 회전 적용
-            headBone.localRotation = checkInitialRotation() * Quaternion.Euler(finalEuler);
+            Quaternion targetRotation = checkInitialRotation() * Quaternion.Euler(finalEuler);
+            float blend = 1f - Mathf.Exp(-Mathf.Max(0.1f, trackingSmoothingSpeed) * Time.deltaTime);
+            headBone.localRotation = Quaternion.Slerp(headBone.localRotation, targetRotation, blend);
         }
     }
 
@@ -312,9 +333,84 @@ public class iFacialMocapAnimator : MonoBehaviour
             headBone.localRotation = Quaternion.Slerp(headBone.localRotation, neutralRotation, blend);
         }
     }
+
+    public void RequestCalibration()
+    {
+        calibrateNow = true;
+        calibrationStatus = "보정 요청됨";
+    }
+
+    public void ResetCalibration()
+    {
+        calibrationOffsetEuler = Vector3.zero;
+        rotationMultiplier = new Vector3(1f, -1f, 1f);
+        headSensitivity = 5f;
+        additionalOffset = Vector3.zero;
+        calibrationStatus = "기본값 복원 완료";
+        Debug.Log("[Calibration] 보정값을 기본값으로 복원했습니다.");
+    }
+
+    public void SaveCalibration()
+    {
+        string profileName = GetCalibrationProfileName();
+        string storageKey = CalibrationStoragePrefix + profileName + ".";
+
+        try
+        {
+            PlayerPrefs.SetFloat(storageKey + "offset.x", calibrationOffsetEuler.x);
+            PlayerPrefs.SetFloat(storageKey + "offset.y", calibrationOffsetEuler.y);
+            PlayerPrefs.SetFloat(storageKey + "offset.z", calibrationOffsetEuler.z);
+            PlayerPrefs.SetFloat(storageKey + "multiplier.x", rotationMultiplier.x);
+            PlayerPrefs.SetFloat(storageKey + "multiplier.y", rotationMultiplier.y);
+            PlayerPrefs.SetFloat(storageKey + "multiplier.z", rotationMultiplier.z);
+            PlayerPrefs.SetFloat(storageKey + "headSensitivity", headSensitivity);
+            PlayerPrefs.SetFloat(storageKey + "additionalOffset.x", additionalOffset.x);
+            PlayerPrefs.SetFloat(storageKey + "additionalOffset.y", additionalOffset.y);
+            PlayerPrefs.SetFloat(storageKey + "additionalOffset.z", additionalOffset.z);
+            PlayerPrefs.Save();
+
+            calibrationSaveStatus = $"저장 완료: {profileName}";
+            lastCalibrationSavedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            Debug.Log($"[Calibration] '{profileName}' 보정값을 저장했습니다.");
+        }
+        catch (Exception exception)
+        {
+            calibrationSaveStatus = $"저장 실패: {exception.Message}";
+            Debug.LogError($"[Calibration] 보정값 저장 실패: {exception.Message}");
+        }
+    }
     #endregion
 
     #region 헬퍼 메서드
+    private void PerformCalibration()
+    {
+        if (headBone == null)
+        {
+            calibrationStatus = "보정 실패: 머리 뼈 없음";
+            Debug.LogWarning("[Calibration] 머리 뼈가 연결되지 않아 보정할 수 없습니다.");
+            return;
+        }
+
+        if (UDPReceiver.Instance == null || !UDPReceiver.Instance.IsReceivingPackets)
+        {
+            calibrationStatus = "보정 실패: 정상 패킷 없음";
+            Debug.LogWarning("[Calibration] 정상 패킷을 수신 중일 때만 보정할 수 있습니다.");
+            return;
+        }
+
+        calibrationOffsetEuler = currentHeadEuler;
+        calibrationStatus = "보정 완료";
+        lastCalibrationAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+        Debug.Log($"[Calibration] 보정 완료. Offset: {calibrationOffsetEuler}");
+    }
+
+    private string GetCalibrationProfileName()
+    {
+        return string.IsNullOrWhiteSpace(calibrationProfileName)
+            ? gameObject.name
+            : calibrationProfileName.Trim();
+    }
+
     private void CacheBlendShapeIndices()
     {
         blendShapeIndices.Clear();
