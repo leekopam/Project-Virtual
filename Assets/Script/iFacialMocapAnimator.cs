@@ -62,6 +62,7 @@ public class iFacialMocapAnimator : MonoBehaviour
         // 연결 대상이 비어있으면 자동으로 찾기 수행
         if (faceMeshRenderer == null) AutoFindFaceMesh();
         if (headBone == null) AutoFindHeadBone();
+        if (leftEyeBone == null || rightEyeBone == null) AutoFindEyeBones();
         CacheBlendShapeIndices();
 
         // 초기 회전값 저장 (보정 기준)
@@ -119,12 +120,9 @@ public class iFacialMocapAnimator : MonoBehaviour
     void AutoFindHeadBone()
     {
         Animator anim = GetComponent<Animator>();
-        if (anim != null)
+        if (anim != null && anim.isHuman)
         {
             headBone = anim.GetBoneTransform(HumanBodyBones.Head);
-            // 눈 뼈도 일단 찾아두긴 함 (나중에 쓸 수도 있으니)
-            leftEyeBone = anim.GetBoneTransform(HumanBodyBones.LeftEye);
-            rightEyeBone = anim.GetBoneTransform(HumanBodyBones.RightEye);
         }
 
         // Animator가 없으면 이름으로 검색
@@ -141,6 +139,59 @@ public class iFacialMocapAnimator : MonoBehaviour
             }
         }
         if (headBone != null) Debug.Log($"✅ [자동 연결] 머리 뼈: {headBone.name}");
+    }
+
+    // 좌우 눈 뼈를 자동으로 찾아주는 메서드
+    void AutoFindEyeBones()
+    {
+        Animator anim = GetComponent<Animator>();
+        if (leftEyeBone == null)
+        {
+            if (anim != null && anim.isHuman)
+                leftEyeBone = anim.GetBoneTransform(HumanBodyBones.LeftEye);
+            if (leftEyeBone == null)
+                leftEyeBone = FindEyeBoneByName(true);
+            if (leftEyeBone != null)
+                Debug.Log($"✅ [자동 연결] 왼쪽 눈 뼈: {leftEyeBone.name}");
+        }
+
+        if (rightEyeBone == null)
+        {
+            if (anim != null && anim.isHuman)
+                rightEyeBone = anim.GetBoneTransform(HumanBodyBones.RightEye);
+            if (rightEyeBone == null)
+                rightEyeBone = FindEyeBoneByName(false);
+            if (rightEyeBone != null)
+                Debug.Log($"✅ [자동 연결] 오른쪽 눈 뼈: {rightEyeBone.name}");
+        }
+    }
+
+    private Transform FindEyeBoneByName(bool isLeft)
+    {
+        Transform[] allChildren = GetComponentsInChildren<Transform>(true);
+        return allChildren.FirstOrDefault(t => IsEyeBoneName(t.name, isLeft));
+    }
+
+    private static bool IsEyeBoneName(string boneName, bool isLeft)
+    {
+        string normalizedName = new string(boneName.Where(char.IsLetter).ToArray()).ToLowerInvariant();
+
+        if (isLeft)
+        {
+            return normalizedName.Contains("lefteye") ||
+                   normalizedName.Contains("eyeleft") ||
+                   normalizedName.EndsWith("leye") ||
+                   normalizedName.EndsWith("eyel") ||
+                   normalizedName.Contains("왼쪽눈") ||
+                   normalizedName.Contains("左目");
+        }
+
+        return normalizedName.Contains("righteye") ||
+               normalizedName.Contains("eyeright") ||
+               normalizedName.EndsWith("reye") ||
+               normalizedName.EndsWith("eyer") ||
+               normalizedName.Contains("오른쪽눈") ||
+               normalizedName.Contains("右目");
     }
 
     // UDP 리시버에 연결하는 기능
