@@ -31,6 +31,9 @@
 # 로컬 작업 과정에서 생성되는 일회성 증거 파일
 /task_*_precommit_evidence.txt
 
+# 로컬 작업 문서
+/docs/
+
 # Unity가 로컬에서 생성하는 파일
 /[Ll]ibrary/
 /[Tt]emp/
