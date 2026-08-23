@@ -6,6 +6,10 @@
 /Assets/Model/**/*.pmx*
 /Assets/Model/**/*.pmd*
 
+# 재배포가 금지된 로컬 전용 MMD 변환 도구
+/Assets/MMD4Mecanim/
+/Assets/MMD4Mecanim.meta
+
 # Unity MCP의 선택적 런타임 컴파일러는 로컬 설치 항목
 /Assets/Plugins.meta
 /Assets/Plugins/Roslyn/
