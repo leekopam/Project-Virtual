@@ -6,6 +6,9 @@
 /Assets/Model/**/*.pmx*
 /Assets/Model/**/*.pmd*
 
+# 원본 이용 규약을 저장소에서 증명할 수 없는 YYB 미쿠 원본 및 변환 결과
+/Assets/YYB Hatsune Miku_default_1.0ver*
+
 # 재배포가 금지된 로컬 전용 MMD 변환 도구
 /Assets/MMD4Mecanim/
 /Assets/MMD4Mecanim.meta
@@ -24,6 +27,9 @@
 # Unity MCP 세션 로그
 /Assets/UnityMCP/
 /Assets/UnityMCP.meta
+
+# 로컬 작업 과정에서 생성되는 일회성 증거 파일
+/task_*_precommit_evidence.txt
 
 # Unity가 로컬에서 생성하는 파일
 /[Ll]ibrary/
