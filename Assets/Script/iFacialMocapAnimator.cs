@@ -67,11 +67,15 @@ public class iFacialMocapAnimator : MonoBehaviour
     private string lastCalibrationAt = "보정 기록 없음";
     private string calibrationSaveStatus = "저장 기록 없음";
     private string lastCalibrationSavedAt = "저장 기록 없음";
+    private string calibrationLoadStatus = "불러오기 기록 없음";
+    private string lastCalibrationLoadedAt = "불러오기 기록 없음";
 
     public string CalibrationStatus => calibrationStatus;
     public string LastCalibrationAt => lastCalibrationAt;
     public string CalibrationSaveStatus => calibrationSaveStatus;
     public string LastCalibrationSavedAt => lastCalibrationSavedAt;
+    public string CalibrationLoadStatus => calibrationLoadStatus;
+    public string LastCalibrationLoadedAt => lastCalibrationLoadedAt;
     #endregion
 
     #region 유니티 라이프사이클
@@ -85,6 +89,8 @@ public class iFacialMocapAnimator : MonoBehaviour
 
         // 초기 회전값 저장 (보정 기준)
         if (headBone) initialHeadRotation = headBone.localRotation;
+
+        LoadCalibration();
 
         // UDP 수신 연결 시작
         ConnectToUDP();
@@ -377,6 +383,54 @@ public class iFacialMocapAnimator : MonoBehaviour
         {
             calibrationSaveStatus = $"저장 실패: {exception.Message}";
             Debug.LogError($"[Calibration] 보정값 저장 실패: {exception.Message}");
+        }
+    }
+
+    public bool LoadCalibration()
+    {
+        string profileName = GetCalibrationProfileName();
+        string storageKey = CalibrationStoragePrefix + profileName + ".";
+        string[] requiredKeys =
+        {
+            "offset.x", "offset.y", "offset.z",
+            "multiplier.x", "multiplier.y", "multiplier.z",
+            "headSensitivity",
+            "additionalOffset.x", "additionalOffset.y", "additionalOffset.z"
+        };
+
+        if (requiredKeys.Any(key => !PlayerPrefs.HasKey(storageKey + key)))
+        {
+            calibrationLoadStatus = $"저장값 없음: {profileName}";
+            return false;
+        }
+
+        try
+        {
+            calibrationOffsetEuler = new Vector3(
+                PlayerPrefs.GetFloat(storageKey + "offset.x"),
+                PlayerPrefs.GetFloat(storageKey + "offset.y"),
+                PlayerPrefs.GetFloat(storageKey + "offset.z"));
+            rotationMultiplier = new Vector3(
+                PlayerPrefs.GetFloat(storageKey + "multiplier.x"),
+                PlayerPrefs.GetFloat(storageKey + "multiplier.y"),
+                PlayerPrefs.GetFloat(storageKey + "multiplier.z"));
+            headSensitivity = PlayerPrefs.GetFloat(storageKey + "headSensitivity");
+            additionalOffset = new Vector3(
+                PlayerPrefs.GetFloat(storageKey + "additionalOffset.x"),
+                PlayerPrefs.GetFloat(storageKey + "additionalOffset.y"),
+                PlayerPrefs.GetFloat(storageKey + "additionalOffset.z"));
+
+            calibrationStatus = "저장값 적용 완료";
+            calibrationLoadStatus = $"불러오기 완료: {profileName}";
+            lastCalibrationLoadedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            Debug.Log($"[Calibration] '{profileName}' 보정값을 불러왔습니다.");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            calibrationLoadStatus = $"불러오기 실패: {exception.Message}";
+            Debug.LogError($"[Calibration] 보정값 불러오기 실패: {exception.Message}");
+            return false;
         }
     }
     #endregion

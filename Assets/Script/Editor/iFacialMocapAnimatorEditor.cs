@@ -16,6 +16,8 @@ public class iFacialMocapAnimatorEditor : Editor
         EditorGUILayout.LabelField("최근 보정 시각", animator.LastCalibrationAt);
         EditorGUILayout.LabelField("저장 상태", animator.CalibrationSaveStatus);
         EditorGUILayout.LabelField("최근 저장 시각", animator.LastCalibrationSavedAt);
+        EditorGUILayout.LabelField("불러오기 상태", animator.CalibrationLoadStatus);
+        EditorGUILayout.LabelField("최근 불러오기 시각", animator.LastCalibrationLoadedAt);
 
         if (!Application.isPlaying)
         {
@@ -39,8 +41,17 @@ public class iFacialMocapAnimatorEditor : Editor
         }
         EditorGUILayout.EndHorizontal();
 
+        EditorGUILayout.BeginHorizontal();
         if (GUILayout.Button("캐릭터별 보정값 저장"))
             animator.SaveCalibration();
+
+        if (GUILayout.Button("저장값 불러오기"))
+        {
+            Undo.RecordObject(animator, "캘리브레이션 저장값 불러오기");
+            if (animator.LoadCalibration())
+                EditorUtility.SetDirty(animator);
+        }
+        EditorGUILayout.EndHorizontal();
 
         if (Application.isPlaying)
             Repaint();
