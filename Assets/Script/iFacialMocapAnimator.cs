@@ -45,6 +45,17 @@ public class iFacialMocapAnimator : MonoBehaviour
     [Tooltip("추가 수동 오프셋 (필요시 사용)")]
     public Vector3 additionalOffset = Vector3.zero;
 
+    [Header("눈 회전 보정")]
+    [Tooltip("각 축별 눈 회전 방향. iFacialMocap의 눈 각도는 도 단위로 적용됩니다.")]
+    public Vector3 eyeRotationMultiplier = new Vector3(1f, -1f, 1f);
+
+    [Tooltip("눈 회전 전체 감도")]
+    [Min(0f)]
+    public float eyeSensitivity = 1f;
+
+    [Tooltip("비정상 패킷으로 인한 과도한 눈 회전을 막는 축별 제한 각도")]
+    public Vector3 eyeRotationLimit = new Vector3(25f, 35f, 15f);
+
     [Tooltip("패킷 재수신과 일반 추적 시 적용할 보간 속도")]
     [Min(0.1f)]
     public float trackingSmoothingSpeed = 12f;
@@ -59,8 +70,12 @@ public class iFacialMocapAnimator : MonoBehaviour
     private readonly Dictionary<string, float> currentBlendShapes = new Dictionary<string, float>();
     private readonly Dictionary<string, int> blendShapeIndices = new Dictionary<string, int>();
     private Vector3 currentHeadEuler = Vector3.zero;
+    private Vector3 currentLeftEyeEuler = Vector3.zero;
+    private Vector3 currentRightEyeEuler = Vector3.zero;
 
     private Quaternion initialHeadRotation;
+    private Quaternion initialLeftEyeRotation;
+    private Quaternion initialRightEyeRotation;
     private bool isConnected = false;
     private string calibrationStatus = "미보정";
     private string lastCalibrationAt = "보정 기록 없음";
@@ -88,6 +103,8 @@ public class iFacialMocapAnimator : MonoBehaviour
 
         // 초기 회전값 저장 (보정 기준)
         if (headBone) initialHeadRotation = headBone.localRotation;
+        if (leftEyeBone) initialLeftEyeRotation = leftEyeBone.localRotation;
+        if (rightEyeBone) initialRightEyeRotation = rightEyeBone.localRotation;
 
         LoadCalibration();
 
@@ -117,6 +134,7 @@ public class iFacialMocapAnimator : MonoBehaviour
         {
             ApplyBlendShapes();
             ApplyHeadRotation();
+            ApplyEyeRotations();
         }
         else
         {
@@ -252,6 +270,14 @@ public class iFacialMocapAnimator : MonoBehaviour
                     currentHeadEuler = ParseHeadRotationEuler(rawData);
                 }
             }
+            else if (valuePair.Contains("rightEye#"))
+            {
+                TryStoreEyeRotation(valuePair, "rightEye#", false);
+            }
+            else if (valuePair.Contains("leftEye#"))
+            {
+                TryStoreEyeRotation(valuePair, "leftEye#", true);
+            }
             else if (valuePair.Contains("-"))
             {
                 var pair = valuePair.Split('-');
@@ -316,6 +342,27 @@ public class iFacialMocapAnimator : MonoBehaviour
         }
     }
 
+    private void ApplyEyeRotations()
+    {
+        float blend = 1f - Mathf.Exp(-Mathf.Max(0.1f, trackingSmoothingSpeed) * Time.deltaTime);
+        ApplyEyeRotation(leftEyeBone, initialLeftEyeRotation, currentLeftEyeEuler, blend);
+        ApplyEyeRotation(rightEyeBone, initialRightEyeRotation, currentRightEyeEuler, blend);
+    }
+
+    private void ApplyEyeRotation(Transform eyeBone, Quaternion initialRotation, Vector3 receivedEuler, float blend)
+    {
+        if (eyeBone == null) return;
+
+        Vector3 finalEuler = Vector3.Scale(receivedEuler, eyeRotationMultiplier) * eyeSensitivity;
+        finalEuler.x = Mathf.Clamp(finalEuler.x, -Mathf.Abs(eyeRotationLimit.x), Mathf.Abs(eyeRotationLimit.x));
+        finalEuler.y = Mathf.Clamp(finalEuler.y, -Mathf.Abs(eyeRotationLimit.y), Mathf.Abs(eyeRotationLimit.y));
+        finalEuler.z = Mathf.Clamp(finalEuler.z, -Mathf.Abs(eyeRotationLimit.z), Mathf.Abs(eyeRotationLimit.z));
+
+        Quaternion neutralRotation = IsValidRotation(initialRotation) ? initialRotation : Quaternion.identity;
+        Quaternion targetRotation = neutralRotation * Quaternion.Euler(finalEuler);
+        eyeBone.localRotation = Quaternion.Slerp(eyeBone.localRotation, targetRotation, blend);
+    }
+
     private void ReturnToNeutral()
     {
         float blend = 1f - Mathf.Exp(-NeutralReturnSpeed * Time.deltaTime);
@@ -336,6 +383,33 @@ public class iFacialMocapAnimator : MonoBehaviour
         {
             Quaternion neutralRotation = checkInitialRotation() * Quaternion.Euler(additionalOffset);
             headBone.localRotation = Quaternion.Slerp(headBone.localRotation, neutralRotation, blend);
+        }
+
+        ReturnEyeToNeutral(leftEyeBone, initialLeftEyeRotation, blend);
+        ReturnEyeToNeutral(rightEyeBone, initialRightEyeRotation, blend);
+    }
+
+    private static void ReturnEyeToNeutral(Transform eyeBone, Quaternion initialRotation, float blend)
+    {
+        if (eyeBone == null) return;
+
+        Quaternion neutralRotation = IsValidRotation(initialRotation) ? initialRotation : Quaternion.identity;
+        eyeBone.localRotation = Quaternion.Slerp(eyeBone.localRotation, neutralRotation, blend);
+    }
+
+    public void CopyAppliedBlendShapes(List<KeyValuePair<string, float>> destination)
+    {
+        if (destination == null) throw new ArgumentNullException(nameof(destination));
+
+        destination.Clear();
+        if (faceMeshRenderer == null) return;
+
+        foreach (KeyValuePair<string, float> blendShape in currentBlendShapes)
+        {
+            if (!blendShapeIndices.TryGetValue(blendShape.Key, out int index)) continue;
+            destination.Add(new KeyValuePair<string, float>(
+                blendShape.Key,
+                Mathf.Clamp01(faceMeshRenderer.GetBlendShapeWeight(index) / 100f)));
         }
     }
 
@@ -483,6 +557,26 @@ public class iFacialMocapAnimator : MonoBehaviour
         if (initialHeadRotation.x == 0 && initialHeadRotation.y == 0 && initialHeadRotation.z == 0 && initialHeadRotation.w == 0)
             return Quaternion.identity;
         return initialHeadRotation;
+    }
+
+    private void TryStoreEyeRotation(string valuePair, string marker, bool isLeftEye)
+    {
+        int markerIndex = valuePair.IndexOf(marker, StringComparison.Ordinal);
+        if (markerIndex < 0) return;
+
+        string rawData = valuePair.Substring(markerIndex + marker.Length);
+        if (!FacialMocapRotationParser.TryParseEuler(rawData, out Vector3 rotation)) return;
+
+        bool storeAsLeftEye = swapLeftRightEye ? !isLeftEye : isLeftEye;
+        if (storeAsLeftEye)
+            currentLeftEyeEuler = rotation;
+        else
+            currentRightEyeEuler = rotation;
+    }
+
+    private static bool IsValidRotation(Quaternion rotation)
+    {
+        return rotation.x != 0f || rotation.y != 0f || rotation.z != 0f || rotation.w != 0f;
     }
 
     // 문자열 데이터를 파싱하여 오일러 각도로 변환

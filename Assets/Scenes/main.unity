@@ -275,6 +275,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0099ac8a2f5dfe34e8063ce871194d90, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1421476528}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0099ac8a2f5dfe34e8063ce871194d90, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1421476529}
   m_SourcePrefab: {fileID: 100100000, guid: 0099ac8a2f5dfe34e8063ce871194d90, type: 3}
 --- !u!1 &1421476527 stripped
 GameObject:
@@ -300,13 +303,33 @@ MonoBehaviour:
   rollSourceIndex: 4
   calibrateNow: 0
   calibrationOffsetEuler: {x: 0, y: 0, z: 0}
+  calibrationProfileName:
   rotationMultiplier: {x: 1, y: -1, z: 1}
   headSensitivity: 5
   additionalOffset: {x: 0, y: 0, z: 0}
+  eyeRotationMultiplier: {x: 1, y: -1, z: 1}
+  eyeSensitivity: 1
+  eyeRotationLimit: {x: 25, y: 35, z: 15}
+  trackingSmoothingSpeed: 12
   faceMeshRenderer: {fileID: 0}
   headBone: {fileID: 0}
   leftEyeBone: {fileID: 0}
   rightEyeBone: {fileID: 0}
+--- !u!114 &1421476529
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1421476527}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7dde9559d22a8f047818ff5ee29af211, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  sendEnabled: 0
+  targetIPAddress: 127.0.0.1
+  targetPort: 39540
 --- !u!1 &1991374955
 GameObject:
   m_ObjectHideFlags: 0
@@ -338,11 +361,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   port: 49983
   targetIPAddress: 
+  lockFirstSender: 1
   signalTimeout: 1
-  IsConnected: 0
-  currentStatus: "\uB300\uAE30 \uC911"
-  lastReceivedAt: "\uC218\uC2E0 \uAE30\uB85D \uC5C6\uC74C"
-  isReceivingPackets: 0
   receivedLog: "\uB300\uAE30\uC911..."
 --- !u!4 &1991374957
 Transform:

@@ -51,6 +51,36 @@ public class FacialMocapCoreTests
     }
 
     [Test]
+    public void RotationParser_UsesInvariantCultureAndRejectsMalformedValues()
+    {
+        Assert.That(FacialMocapRotationParser.TryParseEuler("6.0,-1.5,0.25", out Vector3 rotation), Is.True);
+        Assert.That(rotation, Is.EqualTo(new Vector3(6f, -1.5f, 0.25f)));
+        Assert.That(FacialMocapRotationParser.TryParseEuler("6,broken,0.25", out _), Is.False);
+    }
+
+    [TestCase("あ", "A")]
+    [TestCase("い", "I")]
+    [TestCase("う", "U")]
+    [TestCase("え", "E")]
+    [TestCase("お", "O")]
+    [TestCase("ウィンク", "Blink_L")]
+    [TestCase("ウィンク右", "Blink_R")]
+    [TestCase("笑い", "Joy")]
+    [TestCase("怒り", "Angry")]
+    [TestCase("困る", "Sorrow")]
+    public void ExpressionMapper_MapsSupportedNames(string source, string expected)
+    {
+        Assert.That(VmcExpressionNameMapper.TryMap(source, out string actual), Is.True);
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void ExpressionMapper_RejectsUnsupportedNames()
+    {
+        Assert.That(VmcExpressionNameMapper.TryMap("未対応", out _), Is.False);
+    }
+
+    [Test]
     public void CalibrationStore_RoundTripsAllValues()
     {
         var expected = new FacialMocapCalibrationSettings(
