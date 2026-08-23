@@ -6,6 +6,21 @@
 /Assets/Model/**/*.pmx*
 /Assets/Model/**/*.pmd*
 
+# Unity MCP의 선택적 런타임 컴파일러는 로컬 설치 항목
+/Assets/Plugins.meta
+/Assets/Plugins/Roslyn/
+/Assets/Plugins/Roslyn.meta
+
+# 패키지 도구가 설치 과정에서 생성하는 로컬 설정
+/ProjectSettings/Packages/com.unity.probuilder/
+
+# Git URL로 관리하는 외부 Unity 패키지의 로컬 잔여물
+/Packages/com.coplaydev.unity-mcp/
+
+# Unity MCP 세션 로그
+/Assets/UnityMCP/
+/Assets/UnityMCP.meta
+
 # Unity가 로컬에서 생성하는 파일
 /[Ll]ibrary/
 /[Tt]emp/
