@@ -8,11 +8,11 @@ public class iFacialMocapAnimator : MonoBehaviour
     #region 변수 선언
     [Header("설정 조정")]
     [Tooltip("체크하면 내 왼쪽 눈 감을 때 모델도 왼쪽 눈을 감습니다. (체크 해제 시 거울 모드)")]
-    public bool swapLeftRightEye = true; 
-    
+    public bool swapLeftRightEye = true;
+
     [Header("회전 데이터 처리 설정")]
     [Tooltip("수신된 데이터가 라디안 단위라면 체크 (기본 체크)")]
-    public bool useRadians = true; 
+    public bool useRadians = true;
 
     [Header("데이터 소스 매핑")]
     [Tooltip("고개 끄덕임(Pitch)을 담당하는 데이터 번호 (기본 5)")]
@@ -48,7 +48,7 @@ public class iFacialMocapAnimator : MonoBehaviour
     // 내부 변수
     private Dictionary<string, float> currentBlendShapes = new Dictionary<string, float>();
     private Vector3 currentHeadEuler = Vector3.zero;
-    
+
     private Quaternion initialHeadRotation;
     private bool isConnected = false;
     #endregion
@@ -97,7 +97,7 @@ public class iFacialMocapAnimator : MonoBehaviour
     {
         var renderers = GetComponentsInChildren<SkinnedMeshRenderer>(true);
         if (renderers.Length == 0) return;
-        
+
         // 쉐이프키가 가장 많은 렌더러를 얼굴로 간주
         var best = renderers.OrderByDescending(r => r.sharedMesh.blendShapeCount).First();
         faceMeshRenderer = best;
@@ -164,7 +164,7 @@ public class iFacialMocapAnimator : MonoBehaviour
                 int index = valuePair.IndexOf("head#");
                 if (index + 5 < valuePair.Length)
                 {
-                    string rawData = valuePair.Substring(index + 5); 
+                    string rawData = valuePair.Substring(index + 5);
                     currentHeadEuler = ParseHeadRotationEuler(rawData);
                 }
             }
@@ -207,7 +207,7 @@ public class iFacialMocapAnimator : MonoBehaviour
         {
             // 캘리브레이션 적용 (현재 값 - 기준 값)
             Vector3 finalEuler = currentHeadEuler - calibrationOffsetEuler;
-            
+
             // 각도 정규화 (-180 ~ 180)
             finalEuler.x = NormalizeAngle(finalEuler.x);
             finalEuler.y = NormalizeAngle(finalEuler.y);
@@ -232,9 +232,10 @@ public class iFacialMocapAnimator : MonoBehaviour
 
     #region 헬퍼 메서드
     // 초기 회전값 유효성 체크
-    private Quaternion checkInitialRotation() {
-        if (initialHeadRotation.x == 0 && initialHeadRotation.y == 0 && initialHeadRotation.z == 0 && initialHeadRotation.w == 0) 
-            return Quaternion.identity; 
+    private Quaternion checkInitialRotation()
+    {
+        if (initialHeadRotation.x == 0 && initialHeadRotation.y == 0 && initialHeadRotation.z == 0 && initialHeadRotation.w == 0)
+            return Quaternion.identity;
         return initialHeadRotation;
     }
 
@@ -269,7 +270,7 @@ public class iFacialMocapAnimator : MonoBehaviour
         y = NormalizeAngle(y);
         z = NormalizeAngle(z);
 
-        return new Vector3(x, y, z); 
+        return new Vector3(x, y, z);
     }
 
     // 각도를 -180 ~ 180 사이로 정규화
@@ -301,8 +302,8 @@ public class iFacialMocapAnimator : MonoBehaviour
             case "mouthPucker": return "お";
             case "mouthUpperUp_L": return "え";
             case "mouthUpperUp_R": return "え";
-            case "eyeBlink_L": return "ウィンク";    
-            case "eyeBlink_R": return "ウィンク右";   
+            case "eyeBlink_L": return "ウィンク";
+            case "eyeBlink_R": return "ウィンク右";
             case "mouthSmile_L": return "笑い";
             case "mouthSmile_R": return "笑い";
             case "browDown_L": return "怒り";

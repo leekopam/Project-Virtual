@@ -1,11 +1,10 @@
-using UnityEngine;
 using System;
-using System.Text;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
-using System.Collections;
-using System.Collections.Generic;
+using UnityEngine;
 
 public class UDPReceiver : MonoBehaviour
 {
@@ -24,7 +23,7 @@ public class UDPReceiver : MonoBehaviour
     public bool IsConnected = false;
 
     [Tooltip("수신된 데이터 로그")]
-    [TextArea(3, 5)]
+    [TextArea(5, 100)]
     public string receivedLog = "대기중...";
 
     // 외부에서 구독 가능한 이벤트
@@ -60,7 +59,8 @@ public class UDPReceiver : MonoBehaviour
         StartConnection();
     }
 
-    private void OnApplicationQuit()
+    // 앱 종료 시 연결 종료
+    private void OnApplicationQuit() 
     {
         StopConnection();
     }
@@ -154,7 +154,7 @@ public class UDPReceiver : MonoBehaviour
     private void HandleReceivedData(string text, string senderIP)
     {
         LatestData = text;
-        receivedLog = text; // 인스펙터 모니터링용
+        receivedLog = text.Replace("|", "\n"); // 인스펙터 모니터링용
 
         // 첫 연결 시 로그 출력
         if (!IsConnected)
@@ -170,12 +170,14 @@ public class UDPReceiver : MonoBehaviour
 }
 
 #region Helper Classes
-// 메인 스레드 디스패처 (OrcController 스타일로 하단 배치)
+// 메인 스레드 디스패처
 public class UnityMainThreadDispatcher : MonoBehaviour
 {
+    
     private static readonly Queue<Action> _executionQueue = new Queue<Action>();
     private static UnityMainThreadDispatcher _instance = null;
 
+    // 싱글톤 인스턴스
     public static UnityMainThreadDispatcher Instance()
     {
         if (!_instance)
@@ -198,6 +200,7 @@ public class UnityMainThreadDispatcher : MonoBehaviour
         }
     }
 
+    // 작업 큐에 액션 추가
     public void Enqueue(Action action)
     {
         lock (_executionQueue)

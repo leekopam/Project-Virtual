@@ -135,6 +135,26 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 3437787798243840901, guid: 740597e7089a21d45a1319a929d4a6fd, type: 3}
+      propertyPath: m_BlendShapeWeights.Array.data[41]
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3437787798243840901, guid: 740597e7089a21d45a1319a929d4a6fd, type: 3}
+      propertyPath: m_BlendShapeWeights.Array.data[42]
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3437787798243840901, guid: 740597e7089a21d45a1319a929d4a6fd, type: 3}
+      propertyPath: m_BlendShapeWeights.Array.data[47]
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3437787798243840901, guid: 740597e7089a21d45a1319a929d4a6fd, type: 3}
+      propertyPath: m_BlendShapeWeights.Array.data[52]
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3437787798243840901, guid: 740597e7089a21d45a1319a929d4a6fd, type: 3}
+      propertyPath: m_BlendShapeWeights.Array.data[55]
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3879199596957987718, guid: 740597e7089a21d45a1319a929d4a6fd, type: 3}
       propertyPath: m_Name
       value: HatsuneMikuNT
@@ -181,7 +201,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6771938227999586690, guid: 740597e7089a21d45a1319a929d4a6fd, type: 3}
       propertyPath: m_Enabled
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents:
     - {fileID: 4113130795806258513, guid: 740597e7089a21d45a1319a929d4a6fd, type: 3}
