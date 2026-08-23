@@ -1,4 +1,7 @@
 using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -56,6 +59,27 @@ public class FacialMocapCoreTests
         Assert.That(FacialMocapRotationParser.TryParseEuler("6.0,-1.5,0.25", out Vector3 rotation), Is.True);
         Assert.That(rotation, Is.EqualTo(new Vector3(6f, -1.5f, 0.25f)));
         Assert.That(FacialMocapRotationParser.TryParseEuler("6,broken,0.25", out _), Is.False);
+    }
+
+    [Test]
+    public void StreamingRequest_SendsOfficialCommandToRequestedEndpoint()
+    {
+        using (var listener = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0)))
+        using (var sender = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0)))
+        {
+            listener.Client.ReceiveTimeout = 1000;
+            int port = ((IPEndPoint)listener.Client.LocalEndPoint).Port;
+            int senderPort = ((IPEndPoint)sender.Client.LocalEndPoint).Port;
+
+            FacialMocapStreamingRequest.Send(sender, IPAddress.Loopback, port);
+
+            var remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+            byte[] payload = listener.Receive(ref remoteEndPoint);
+            Assert.That(
+                Encoding.UTF8.GetString(payload),
+                Is.EqualTo(FacialMocapStreamingRequest.Message));
+            Assert.That(remoteEndPoint.Port, Is.EqualTo(senderPort));
+        }
     }
 
     [TestCase("あ", "A")]

@@ -40,6 +40,12 @@ public class UDPReceiverEditor : Editor
                 receiver.RestartConnection();
 
             EditorGUILayout.EndHorizontal();
+
+            using (new EditorGUI.DisabledScope(!receiver.IsRunning))
+            {
+                if (GUILayout.Button("iPhone 시작 요청 다시 보내기"))
+                    receiver.RequestStreaming();
+            }
         }
 
         EditorGUILayout.Space();
@@ -63,6 +69,9 @@ public class UDPReceiverEditor : Editor
         DrawValue("누적 무시", receiver.TotalIgnoredPackets.ToString());
         DrawValue("잘못된 패킷", receiver.TotalInvalidPackets.ToString());
         DrawValue("최신 프레임 대체", receiver.TotalSupersededPackets.ToString());
+        DrawValue("시작 요청 상태", receiver.StreamingRequestStatus);
+        DrawValue("최근 시작 요청", receiver.LastStreamingRequestAt);
+        DrawValue("누적 시작 요청", receiver.TotalStreamingRequests.ToString());
         if (receiver.SenderWarning != "없음")
             EditorGUILayout.HelpBox(receiver.SenderWarning, MessageType.Warning);
 

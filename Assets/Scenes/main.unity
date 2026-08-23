@@ -361,6 +361,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   port: 49983
   targetIPAddress: 
+  iPhoneIPAddress: 192.168.31.53
+  autoRequestStreaming: 1
   lockFirstSender: 1
   signalTimeout: 1
   receivedLog: "\uB300\uAE30\uC911..."

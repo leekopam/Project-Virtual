@@ -16,6 +16,7 @@ public enum UdpReceiveState
 
 public class UDPReceiver : MonoBehaviour
 {
+    private const float StreamingRequestRetryInterval = 2f;
     private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
     private readonly object packetLock = new object();
     private readonly LatestMocapPacketBuffer latestPacketBuffer = new LatestMocapPacketBuffer();
@@ -29,6 +30,12 @@ public class UDPReceiver : MonoBehaviour
 
     [Tooltip("특정 IP 주소만 허용 (비어있으면 모든 IP 허용)")]
     public string targetIPAddress = "";
+
+    [Tooltip("직접 UDP 연결에 사용할 iPhone IP. 비어있으면 기존 외부 송신 데이터만 기다립니다.")]
+    public string iPhoneIPAddress = "";
+
+    [Tooltip("수신 대기 또는 신호 끊김 상태에서 iFacialMocap 시작 요청을 자동으로 다시 보냅니다.")]
+    public bool autoRequestStreaming = true;
 
     [Tooltip("최초 정상 송신 IP를 잠그고 다른 송신자의 패킷을 무시합니다.")]
     public bool lockFirstSender = true;
@@ -65,6 +72,11 @@ public class UDPReceiver : MonoBehaviour
     public long TotalInvalidPackets => Interlocked.Read(ref totalInvalidPacketCounter);
     public long TotalSupersededPackets => Interlocked.Read(ref totalSupersededPacketCounter);
     public string EstimatedLatency => "측정 불가 (송신 타임스탬프 없음)";
+    public string StreamingRequestStatus => streamingRequestStatus;
+    public string LastStreamingRequestAt => lastStreamingRequestUtc.HasValue
+        ? lastStreamingRequestUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")
+        : "요청 기록 없음";
+    public long TotalStreamingRequests => Interlocked.Read(ref totalStreamingRequestCounter);
 
     [Obsolete("UDP는 연결 상태가 없으므로 IsReceivingPackets를 사용하세요.")]
     public bool IsConnected => IsReceivingPackets;
@@ -76,6 +88,8 @@ public class UDPReceiver : MonoBehaviour
     private string lockedSenderIPAddress = "잠금되지 않음";
     private string senderWarning = "없음";
     private float packetsPerSecond;
+    private string streamingRequestStatus = "iPhone IP 미설정";
+    private DateTime? lastStreamingRequestUtc;
 
     private Thread receiveThread;
     private UdpClient client;
@@ -83,6 +97,7 @@ public class UDPReceiver : MonoBehaviour
     private string configuredTargetIPAddress = "";
     private float lastReceivedRealtime = float.NegativeInfinity;
     private float lastPpsSampleRealtime;
+    private float nextStreamingRequestRealtime;
     private long lastPpsPacketCount;
 
     private string lockedSenderOnReceiveThread = "";
@@ -94,6 +109,7 @@ public class UDPReceiver : MonoBehaviour
     private long totalIgnoredPacketCounter;
     private long totalInvalidPacketCounter;
     private long totalSupersededPacketCounter;
+    private long totalStreamingRequestCounter;
 
     private void Awake()
     {
@@ -116,6 +132,7 @@ public class UDPReceiver : MonoBehaviour
     {
         UpdatePacketsPerSecond();
         ConsumeSenderWarning();
+        RetryStreamingRequestIfNeeded();
 
         if (latestPacketBuffer.TryTake(out UdpMocapPacketFrame frame))
         {
@@ -168,6 +185,12 @@ public class UDPReceiver : MonoBehaviour
             return;
         }
 
+        if (!TryResolveIPAddress(iPhoneIPAddress, out _))
+        {
+            SetPortError($"iPhone IP 주소 형식이 올바르지 않습니다: {iPhoneIPAddress}");
+            return;
+        }
+
         try
         {
             client = new UdpClient(port);
@@ -181,6 +204,8 @@ public class UDPReceiver : MonoBehaviour
 
             SetState(UdpReceiveState.Waiting, $"{port}번 포트에서 정상 패킷을 기다리는 중입니다.");
             Debug.Log($"[UDP] {port}번 포트에서 수신 대기를 시작합니다.");
+            if (autoRequestStreaming && !string.IsNullOrWhiteSpace(iPhoneIPAddress))
+                RequestStreaming();
         }
         catch (SocketException exception)
         {
@@ -217,6 +242,45 @@ public class UDPReceiver : MonoBehaviour
     {
         StopConnection();
         StartConnection();
+    }
+
+    public bool RequestStreaming()
+    {
+        if (!isRunning)
+        {
+            streamingRequestStatus = "요청 실패: 수신이 중지됨";
+            return false;
+        }
+
+        if (!TryResolveIPAddress(iPhoneIPAddress, out IPAddress iPhoneAddress) || iPhoneAddress == null)
+        {
+            streamingRequestStatus = "요청 실패: iPhone IP 확인 필요";
+            return false;
+        }
+
+        nextStreamingRequestRealtime = Time.realtimeSinceStartup + StreamingRequestRetryInterval;
+
+        try
+        {
+            UdpClient activeClient = client;
+            if (activeClient == null)
+            {
+                streamingRequestStatus = "요청 실패: 수신 소켓 확인 필요";
+                return false;
+            }
+
+            FacialMocapStreamingRequest.Send(activeClient, iPhoneAddress, port);
+            lastStreamingRequestUtc = DateTime.UtcNow;
+            Interlocked.Increment(ref totalStreamingRequestCounter);
+            streamingRequestStatus = $"요청 전송 완료: {iPhoneAddress}:{port}";
+            return true;
+        }
+        catch (Exception exception)
+        {
+            streamingRequestStatus = $"요청 실패: {exception.Message}";
+            Debug.LogWarning($"[UDP] iFacialMocap 시작 요청 실패: {exception.Message}");
+            return false;
+        }
     }
     #endregion
 
@@ -347,7 +411,10 @@ public class UDPReceiver : MonoBehaviour
         Interlocked.Increment(ref totalAppliedPacketCounter);
 
         if (statusChanged)
+        {
+            streamingRequestStatus = $"수신 응답 확인: {senderIP}";
             SetState(UdpReceiveState.Receiving, $"{senderIP}의 최신 패킷을 적용 중입니다.");
+        }
 
         if (!wasReceiving)
             Debug.Log($"[UDP] {senderIP}로부터 정상 패킷 수신을 시작했습니다.");
@@ -365,6 +432,15 @@ public class UDPReceiver : MonoBehaviour
         packetsPerSecond = (currentPacketCount - lastPpsPacketCount) / elapsed;
         lastPpsPacketCount = currentPacketCount;
         lastPpsSampleRealtime = now;
+    }
+
+    private void RetryStreamingRequestIfNeeded()
+    {
+        if (!isRunning || !autoRequestStreaming || string.IsNullOrWhiteSpace(iPhoneIPAddress)) return;
+        if (receiveState != UdpReceiveState.Waiting && receiveState != UdpReceiveState.SignalLost) return;
+        if (Time.realtimeSinceStartup < nextStreamingRequestRealtime) return;
+
+        RequestStreaming();
     }
 
     private void ConsumeSenderWarning()
@@ -433,6 +509,11 @@ public class UDPReceiver : MonoBehaviour
         packetsPerSecond = 0f;
         lastPpsPacketCount = TotalReceivedPackets;
         lastPpsSampleRealtime = Time.realtimeSinceStartup;
+        nextStreamingRequestRealtime = 0f;
+        lastStreamingRequestUtc = null;
+        streamingRequestStatus = string.IsNullOrWhiteSpace(iPhoneIPAddress)
+            ? "iPhone IP 미설정"
+            : "시작 요청 대기 중";
     }
 
     private bool TryResolveTargetIPAddress(out string resolvedIPAddress)
@@ -452,6 +533,18 @@ public class UDPReceiver : MonoBehaviour
 
         resolvedIPAddress = "";
         return false;
+    }
+
+    private static bool TryResolveIPAddress(string value, out IPAddress address)
+    {
+        string input = value?.Trim();
+        if (string.IsNullOrEmpty(input))
+        {
+            address = null;
+            return true;
+        }
+
+        return IPAddress.TryParse(input, out address);
     }
 
     private static string GetStatusText(UdpReceiveState state)
